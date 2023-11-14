@@ -159,4 +159,13 @@ interface ITicketNFT {
      * - `ticketID` must exist
      */
     function isExpiredOrUsed(uint256 ticketID) external view returns (bool);
+
+    /**
+     * @dev Returns the price of a ticket for this event
+     */
+    function ticketPrice() external view returns (uint256);
+
 }
+
+
+

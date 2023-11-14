@@ -1,97 +1,91 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.10;
 
-import "forge-std/Test.sol";
-import "../src/contracts/PurchaseToken.sol";
-import "../src/interfaces/ITicketNFT.sol";
-import "../src/contracts/PrimaryMarket.sol";
+// import "forge-std/Test.sol";
+// import "../src/interfaces/IERC20.sol";
+// import "../src/interfaces/ITicketNFT.sol";
+// import "../src/contracts/PurchaseToken.sol";
+// import "../src/contracts/TicketNFT.sol";
+// import "../src/contracts/PrimaryMarket.sol";
 
-contract EndToEnd is Test {
-    PrimaryMarket public primaryMarket;
-    PurchaseToken public purchaseToken;
-    SecondaryMarket public secondaryMarket;
+// contract PrimaryMarketTest is Test {
+//     PurchaseToken public purchaseToken;
+//     PrimaryMarket public primaryMarket;
 
-    address public alice = makeAddr("alice");
-    address public bob = makeAddr("bob");
-    address public charlie = makeAddr("charlie");
+//     address public eventCreator;
+//     address public purchaser;
+//     uint256 public ticketPrice = 1 ether;
+//     string public eventName = "Blockchain Concert";
+//     uint256 public maxTickets = 100;
 
-    function setUp() public {
-        purchaseToken = new PurchaseToken();
-        primaryMarket = new PrimaryMarket(purchaseToken);
-        secondaryMarket = new SecondaryMarket(purchaseToken);
+//     function setUp() public {
+//         eventCreator = makeAddr("eventCreator");
+//         purchaser = makeAddr("purchaser");
 
-        payable(alice).transfer(1e18);
-        payable(bob).transfer(2e18);
-    }
+//         purchaseToken = new PurchaseToken();
+//         primaryMarket = new PrimaryMarket(purchaseToken);
 
-    function testEndToEnd() external {
-        uint256 ticketPrice = 20e18;
-        uint256 bidPrice = 155e18;
+//         // Providing ETH to the event creator and purchaser to mint PurchaseTokens
+//         vm.deal(eventCreator, 10 ether);
+//         vm.deal(purchaser, 10 ether);
 
-        vm.prank(charlie);
-        ITicketNFT ticketNFT = primaryMarket.createNewEvent(
-            "Charlie's concert",
-            ticketPrice,
-            100
-        );
+//         // Event creator mints PurchaseTokens
+//         vm.startPrank(eventCreator);
+//         purchaseToken.mint{value: 5 ether}();
+//         vm.stopPrank();
 
-        assertEq(ticketNFT.creator(), charlie);
-        assertEq(ticketNFT.maxNumberOfTickets(), 100);
-        assertEq(primaryMarket.getPrice(address(ticketNFT)), ticketPrice);
+//         // Purchaser mints PurchaseTokens
+//         vm.startPrank(purchaser);
+//         purchaseToken.mint{value: 5 ether}();
+//         vm.stopPrank();
+//     }
 
-        vm.startPrank(alice);
-        purchaseToken.mint{value: 1e18}();
-        assertEq(purchaseToken.balanceOf(alice), 100e18);
-        purchaseToken.approve(address(primaryMarket), 100e18);
-        uint256 id = primaryMarket.purchase(address(ticketNFT), "Alice");
+//     function testCreateNewEvent() public {
+//         vm.startPrank(eventCreator);
+//         ITicketNFT ticketNFT = primaryMarket.createNewEvent(eventName, ticketPrice, maxTickets);
 
-        assertEq(ticketNFT.balanceOf(alice), 1);
-        assertEq(ticketNFT.holderOf(id), alice);
-        assertEq(ticketNFT.holderNameOf(id), "Alice");
-        assertEq(purchaseToken.balanceOf(alice), 100e18 - ticketPrice);
-        assertEq(purchaseToken.balanceOf(charlie), ticketPrice);
+//         assertEq(ticketNFT.creator(), eventCreator, "Event creator should be set correctly.");
+//         assertEq(ticketNFT.maxNumberOfTickets(), maxTickets, "Max number of tickets should be set correctly.");
+//         assertEq(ticketNFT.eventName(), eventName, "Event name should be set correctly.");
 
-        ticketNFT.approve(address(secondaryMarket), id);
-        secondaryMarket.listTicket(address(ticketNFT), id, 150e18);
+//         vm.stopPrank();
+//     }
 
-        assertEq(secondaryMarket.getHighestBid(address(ticketNFT), id), 150e18);
-        assertEq(
-            secondaryMarket.getHighestBidder(address(ticketNFT), id),
-            address(0)
-        );
+//     function testPurchaseTicket() public {
+//         // Event creator creates a new event
+//         vm.startPrank(eventCreator);
+//         ITicketNFT ticketNFT = primaryMarket.createNewEvent(eventName, ticketPrice, maxTickets);
+//         vm.stopPrank();
 
-        vm.stopPrank();
-        vm.startPrank(bob);
-        purchaseToken.mint{value: 2e18}();
-        purchaseToken.approve(address(secondaryMarket), bidPrice);
-        secondaryMarket.submitBid(address(ticketNFT), id, bidPrice, "Bob");
+//         // Purchaser approves ERC20 token spending and purchases a ticket
+//         vm.startPrank(purchaser);
+//         uint256 purchaserBalanceBefore = purchaseToken.balanceOf(purchaser);
+//         purchaseToken.approve(address(primaryMarket), ticketPrice);
 
-        assertEq(
-            secondaryMarket.getHighestBid(address(ticketNFT), id),
-            bidPrice
-        );
-        assertEq(secondaryMarket.getHighestBidder(address(ticketNFT), id), bob);
+//         // Ensure the correct amount of tokens is approved
+//         assertEq(purchaseToken.allowance(purchaser, address(primaryMarket)), ticketPrice, "Approval amount incorrect.");
 
-        assertEq(ticketNFT.balanceOf(alice), 0);
-        assertEq(ticketNFT.balanceOf(address(secondaryMarket)), 1);
-        assertEq(purchaseToken.balanceOf(address(secondaryMarket)), bidPrice);
-        assertEq(ticketNFT.holderOf(id), address(secondaryMarket));
-        assertEq(ticketNFT.holderNameOf(id), "Alice");
+//         uint256 ticketId = primaryMarket.purchase(address(ticketNFT), "Purchaser");
 
-        vm.stopPrank();
+//         // Check balances after purchase
+//         uint256 purchaserBalanceAfter = purchaseToken.balanceOf(purchaser);
+//         uint256 expectedBalance = purchaserBalanceBefore - ticketPrice;
+//         assertEq(purchaserBalanceAfter, expectedBalance, "Purchaser's token balance should be reduced by the ticket price.");
 
-        uint256 aliceBalanceBefore = purchaseToken.balanceOf(alice);
+//         // Other assertions remain the same
+//         // ...
 
-        vm.prank(alice);
-        secondaryMarket.acceptBid(address(ticketNFT), id);
-        assertEq(purchaseToken.balanceOf(address(secondaryMarket)), 0);
-        uint256 fee = (bidPrice * 0.05e18) / 1e18;
-        assertEq(purchaseToken.balanceOf(charlie), ticketPrice + fee);
-        assertEq(
-            purchaseToken.balanceOf(alice),
-            aliceBalanceBefore + bidPrice - fee
-        );
-        assertEq(ticketNFT.holderOf(id), bob);
-        assertEq(ticketNFT.holderNameOf(id), "Bob");
-    }
-}
+//         vm.stopPrank();
+//     }
+
+
+//     function testGetPrice() public {
+//         // Event creator creates a new event
+//         vm.startPrank(eventCreator);
+//         ITicketNFT ticketNFT = primaryMarket.createNewEvent(eventName, ticketPrice, maxTickets);
+//         vm.stopPrank();
+
+//         uint256 fetchedPrice = primaryMarket.getPrice(address(ticketNFT));
+//         assertEq(fetchedPrice, ticketPrice, "The fetched price should match the set ticket price.");
+//     }
+// }

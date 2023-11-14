@@ -1,48 +1,62 @@
-// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.10;
 
 import "../interfaces/IERC20.sol";
+import "../interfaces/IPrimaryMarket.sol";
 import "../interfaces/ITicketNFT.sol";
-import "../contracts/TicketNFT.sol";
+import "./TicketNFT.sol";
 
-contract PrimaryMarket {
-    // State variables
-    IERC20 public purchaseToken;
-    uint256 public fixedTicketPrice;
-    mapping(address => TicketNFT) public eventToTicketNFT;
+contract PrimaryMarket is IPrimaryMarket {
+    IERC20 public purchasingToken;
+    address[] private ticketCollections;
 
-    // Events
-    event EventCreated(address indexed eventAddress, string eventName, uint256 maxTickets);
-    event TicketPurchased(address indexed buyer, uint256 ticketId, address eventAddress);
-
-    // Constructor
-    constructor(IERC20 _purchaseToken, uint256 _fixedTicketPrice) {
-        purchaseToken = _purchaseToken;
-        fixedTicketPrice = _fixedTicketPrice;
+    constructor(IERC20 _purchasingToken) {
+        purchasingToken = _purchasingToken;
     }
 
-    // Function to create a new Ticket NFT collection
-    function createNewEvent(string memory eventName, uint256 maxTickets) external returns (address) {
-        TicketNFT newTicketNFT = new TicketNFT(eventName, maxTickets);
-        eventToTicketNFT[address(newTicketNFT)] = newTicketNFT;
+    function createNewEvent(
+        string memory eventName,
+        uint256 price,
+        uint256 maxNumberOfTickets
+    ) external returns (ITicketNFT ticketCollection) {
+        TicketNFT newTicketNFT = new TicketNFT(eventName, price, maxNumberOfTickets, msg.sender, address(this));
+        ticketCollections.push(address(newTicketNFT));
 
-        emit EventCreated(address(newTicketNFT), eventName, maxTickets);
-        return address(newTicketNFT);
+        emit EventCreated(msg.sender, address(newTicketNFT), eventName, price, maxNumberOfTickets);
+        return ITicketNFT(newTicketNFT);
     }
 
-    // Function to purchase tickets
-    function purchase(address eventAddress, string memory purchaserName) external {
-        TicketNFT ticketNFT = eventToTicketNFT[eventAddress];
-        require(address(ticketNFT) != address(0), "Event does not exist");
-        require(ticketNFT.balanceOf(msg.sender) < ticketNFT.maxNumberOfTickets(), "Purchase would exceed max supply of tickets");
+    modifier ticketCollectionExists(address ticketCollection) {
+        bool exists = false;
+        for (uint256 i = 0; i < ticketCollections.length; i++) {
+            if (ticketCollections[i] == ticketCollection) {
+                exists = true;
+                break;
+            }
+        }
+        require(exists, "Ticket collection does not exist");
+        _;
+    }
+
+    function purchase(
+        address ticketCollection,
+        string memory holderName
+    ) external ticketCollectionExists(ticketCollection) returns (uint256 id) {
+        ITicketNFT ticketNFT = ITicketNFT(ticketCollection);
+        require(ticketNFT.balanceOf(msg.sender) < ticketNFT.maxNumberOfTickets(), "Max tickets reached for holder");
         
-        // Transfer the fixed price from the purchaser to the contract
-        require(purchaseToken.transferFrom(msg.sender, ticketNFT.creator(), fixedTicketPrice), "Token transfer failed");
+        uint256 ticketPrice = ticketNFT.ticketPrice();
+        require(purchasingToken.transferFrom(msg.sender, ticketNFT.creator(), ticketPrice), "Token transfer failed");
 
-        // Mint the ticket
-        uint256 ticketId = ticketNFT.mint(msg.sender, purchaserName);
+        uint256 ticketId = ticketNFT.mint(msg.sender, holderName);
 
-        emit TicketPurchased(msg.sender, ticketId, eventAddress);
+        emit Purchase(msg.sender, ticketCollection, ticketId, holderName);
+        return ticketId;
     }
 
+    function getPrice(
+        address ticketCollection
+    ) external view ticketCollectionExists(ticketCollection) returns (uint256 price) {
+        ITicketNFT ticketNFT = ITicketNFT(ticketCollection);
+        return ticketNFT.ticketPrice();
+    }
 }

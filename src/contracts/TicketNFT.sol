@@ -1,24 +1,58 @@
-// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.10;
 
 import "../interfaces/ITicketNFT.sol";
 
 contract TicketNFT is ITicketNFT {
-    address private _creator;
+    address immutable private _creator;
     uint256 private _maxNumberOfTickets;
     string private _eventName;
+    address immutable private _primaryMarket;
     uint256 private _ticketCount;
-    mapping(uint256 => address) private _ticketOwners;
+    uint256 immutable public ticketPrice;
+
+    struct TicketInfo {
+        address holder;
+        string holderName;
+        uint256 timestampTillValid;
+        bool isUsed;
+    }
+
+    mapping(uint256 => TicketInfo) private _tickets;
     mapping(address => uint256) private _balances;
-    mapping(uint256 => string) private _ticketHolderNames;
-    mapping(uint256 => bool) private _ticketUsed;
-    mapping(uint256 => uint256) private _ticketExpiry;
     mapping(uint256 => address) private _ticketApprovals;
 
-    constructor(string memory eventName, uint256 maxNumberOfTickets) {
-        _creator = msg.sender;
+    constructor(string memory eventName, uint256 price, uint256 maxTickets, address creator, address primaryMarket) {
+        _creator = creator;
         _eventName = eventName;
-        _maxNumberOfTickets = maxNumberOfTickets;
+        ticketPrice = price;
+        _maxNumberOfTickets = maxTickets;
+        _primaryMarket = primaryMarket;
+    }
+
+    modifier onlyPrimaryMarket() {
+        require(msg.sender == _primaryMarket, "Caller is not the primary market");
+        _;
+    }
+
+    modifier onlyCreator() {
+        require(msg.sender == _creator, "Caller is not the creator");
+        _;
+    }
+
+    modifier onlyTicketHolder(uint256 ticketID) {
+        require(_tickets[ticketID].holder == msg.sender, "Caller is not the ticket holder");
+        _;
+    }
+
+    modifier ticketExists(uint256 ticketID) {
+        require(ticketID < _ticketCount, "Ticket does not exist");
+        _;
+    }
+
+    modifier isNotExpiredOrUsed(uint256 ticketID) {
+        require(!_tickets[ticketID].isUsed, "Ticket is already used");
+        require(block.timestamp < _tickets[ticketID].timestampTillValid, "Ticket is expired");
+        _;
     }
 
     function creator() external view override returns (address) {
@@ -33,89 +67,67 @@ contract TicketNFT is ITicketNFT {
         return _eventName;
     }
 
-    function mint(address holder, string memory holderName) external override returns (uint256 id) {
-        require(msg.sender == _creator, "Only creator can mint tickets");
+    function mint(address holder, string memory holderName) external override onlyPrimaryMarket returns (uint256 id) {
         require(_ticketCount < _maxNumberOfTickets, "Max ticket limit reached");
 
-        uint256 ticketID = _ticketCount + 1;
-        _ticketOwners[ticketID] = holder;
-        _ticketHolderNames[ticketID] = holderName;
-        _ticketExpiry[ticketID] = block.timestamp + 10 days;
-        _ticketUsed[ticketID] = false;
-        _balances[holder] += 1;
-        _ticketCount += 1;
+        _tickets[_ticketCount] = TicketInfo({
+            holder: holder,
+            holderName: holderName,
+            timestampTillValid: block.timestamp + 10 days,
+            isUsed: false
+        });
+        _balances[holder]++;
+        
+        emit Transfer(address(0), holder, _ticketCount);
 
-        emit Transfer(address(0), holder, ticketID);
-
-        return ticketID;
+        return _ticketCount++;
     }
 
     function balanceOf(address holder) external view override returns (uint256 balance) {
-        require(holder != address(0), "Zero address not allowed");
         return _balances[holder];
     }
 
-    function holderOf(uint256 ticketID) external view override returns (address holder) {
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-        return _ticketOwners[ticketID];
+    function holderOf(uint256 ticketID) external view override ticketExists(ticketID) returns (address holder) {
+        return _tickets[ticketID].holder;
     }
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 ticketID
-    ) external override {
-        require(from != address(0) && to != address(0), "Zero address not allowed");
-        require(_ticketOwners[ticketID] == from, "Sender is not the ticket owner");
+    function transferFrom(address from, address to, uint256 ticketID) external override ticketExists(ticketID) {
+        require(from != address(0) && to != address(0), "Address zero is not valid");
+        require(_tickets[ticketID].holder == from, "Sender is not the ticket owner");
         require(msg.sender == from || msg.sender == _ticketApprovals[ticketID], "Caller is not owner nor approved");
 
-        _ticketOwners[ticketID] = to;
-        _balances[from] -= 1;
-        _balances[to] += 1;
+        _tickets[ticketID].holder = to;
+        _balances[from]--;
+        _balances[to]++;
         _ticketApprovals[ticketID] = address(0);
 
         emit Transfer(from, to, ticketID);
         emit Approval(from, address(0), ticketID);
     }
 
-    function approve(address to, uint256 ticketID) external override {
-        address owner = _ticketOwners[ticketID];
-        require(msg.sender == owner, "Caller is not the ticket owner");
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-
+    function approve(address to, uint256 ticketID) external override onlyTicketHolder(ticketID) ticketExists(ticketID) {
         _ticketApprovals[ticketID] = to;
 
-        emit Approval(owner, to, ticketID);
+        emit Approval(_tickets[ticketID].holder, to, ticketID);
     }
 
-    function getApproved(uint256 ticketID) external view override returns (address operator) {
-        require(ticketID <= _ticketCount, "Ticket does not exist");
+    function getApproved(uint256 ticketID) external view override ticketExists(ticketID) returns (address operator) {
         return _ticketApprovals[ticketID];
     }
 
-    function holderNameOf(uint256 ticketID) external view override returns (string memory holderName) {
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-        return _ticketHolderNames[ticketID];
+    function holderNameOf(uint256 ticketID) external view override ticketExists(ticketID) returns (string memory holderName) {
+        return _tickets[ticketID].holderName;
     }
 
-    function updateHolderName(uint256 ticketID, string calldata newName) external override {
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-        require(msg.sender == _ticketOwners[ticketID], "Caller is not the ticket owner");
-
-        _ticketHolderNames[ticketID] = newName;
+    function updateHolderName(uint256 ticketID, string calldata newName) external override onlyTicketHolder(ticketID) ticketExists(ticketID) {
+        _tickets[ticketID].holderName = newName;
     }
 
-    function setUsed(uint256 ticketID) external override {
-        require(msg.sender == _creator, "Only creator can set ticket as used");
-        require(!_ticketUsed[ticketID], "Ticket is already used");
-        require(_ticketExpiry[ticketID] > block.timestamp, "Ticket is expired");
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-
-        _ticketUsed[ticketID] = true;
+    function setUsed(uint256 ticketID) external override onlyCreator ticketExists(ticketID) isNotExpiredOrUsed(ticketID) {
+        _tickets[ticketID].isUsed = true;
     }
 
-    function isExpiredOrUsed(uint256 ticketID) external view override returns (bool) {
-        require(ticketID <= _ticketCount, "Ticket does not exist");
-        return _ticketUsed[ticketID] || block.timestamp > _ticketExpiry[ticketID];
+    function isExpiredOrUsed(uint256 ticketID) external view override ticketExists(ticketID) returns (bool) {
+        return _tickets[ticketID].isUsed || block.timestamp > _tickets[ticketID].timestampTillValid;
     }
 }
