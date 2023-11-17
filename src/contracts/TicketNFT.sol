@@ -21,12 +21,12 @@ contract TicketNFT is ITicketNFT {
     mapping(address => uint256) private _balances;
     mapping(uint256 => address) private _ticketApprovals;
 
-    constructor(string memory eventName, uint256 price, uint256 maxTickets, address creator, address primaryMarket) {
-        _creator = creator;
-        _eventName = eventName;
-        ticketPrice = price;
-        _maxNumberOfTickets = maxTickets;
+    constructor(string memory __eventName, uint256 _price, uint256 _maxTickets, address __creator, address primaryMarket) {
+        _creator = __creator;
+        _eventName = __eventName;
+        _maxNumberOfTickets = _maxTickets;
         _primaryMarket = primaryMarket;
+        ticketPrice = _price;
     }
 
     modifier onlyPrimaryMarket() {
