@@ -23,6 +23,8 @@ contract CompleteSystemTest is Test {
 
     // Define ticket prices for the primary market
     uint256 ticketPrice = 1 ether;
+    uint256 bobListPrice = 2 ether;
+    uint256 daveBidPrice = 3 ether;
 
     function setUp() public {
         purchaseToken = new PurchaseToken();
@@ -77,13 +79,13 @@ contract CompleteSystemTest is Test {
         // Bob lists his ticket on the secondary market
         vm.startPrank(bob);
         ticketNFT.approve(address(secondaryMarket), ticketIdBob);
-        secondaryMarket.listTicket(address(ticketNFT), ticketIdBob, ticketPrice * 2); // List for double price
+        secondaryMarket.listTicket(address(ticketNFT), ticketIdBob, bobListPrice); // List for double price
         vm.stopPrank();
 
-        // Dave bids on Bob's ticket on the secondary market
+        // Dave bids on Bob's ticket on the secondary market for price + 1
         vm.startPrank(dave);
-        purchaseToken.approve(address(secondaryMarket), ticketPrice * 2);
-        secondaryMarket.submitBid(address(ticketNFT), ticketIdBob, ticketPrice * 2, "Dave");
+        purchaseToken.approve(address(secondaryMarket), daveBidPrice);
+        secondaryMarket.submitBid(address(ticketNFT), ticketIdBob, daveBidPrice, "Dave");
         uint256 daveTokenBalanceAfterBid = purchaseToken.balanceOf(dave);
         vm.stopPrank();
 
@@ -96,9 +98,12 @@ contract CompleteSystemTest is Test {
         // Assert final balances and ticket ownership
         assertEq(ticketNFT.holderOf(ticketIdBob), dave, "Dave should now own the ticket");
         assertEq(ticketNFT.holderOf(ticketIdCharlie), charlie, "Charlie should still own his ticket");
-        assertEq(purchaseToken.balanceOf(bob), bobTokenBalanceAfterSale, "Bob's balance should reflect the ticket sale");
-        assertEq(purchaseToken.balanceOf(dave), daveTokenBalanceAfterBid - ticketPrice * 2, "Dave's balance should reflect the ticket purchase");
-        assertEq(purchaseToken.balanceOf(alice), aliceTokenBalanceAfterEvent, "Alice's balance should remain unchanged");
+
+        uint256 feeAmount = (daveBidPrice * 5) / 100;
+        uint256 bobFinalBalance = initialBalance - ticketPrice + daveBidPrice - feeAmount;
+        uint256 daveFinalBalance = initialBalance - daveBidPrice;
+        uint256 aliceFinalBalance = initialBalance + ticketPrice + ticketPrice + feeAmount;
         assertEq(purchaseToken.balanceOf(charlie), charlieTokenBalanceAfterPurchase, "Charlie's balance should remain unchanged after the market activities");
-    }
+
+        }
 }

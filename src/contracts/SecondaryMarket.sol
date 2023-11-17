@@ -94,7 +94,7 @@ contract SecondaryMarket is ISecondaryMarket {
         uint256 feeAmount = (listing.highestBid * feePercentage) / feeDivisor;
         uint256 payoutAmount = listing.highestBid - feeAmount;
 
-        // Transfer the payout amount to the ticket owner (Alice)
+        // Transfer the payout amount to the ticket owner
         purchasingToken.transfer(listing.ticketOwner, payoutAmount);
 
         address eventCreator = ITicketNFT(ticketCollection).creator();
